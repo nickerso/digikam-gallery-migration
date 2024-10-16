@@ -9,7 +9,7 @@ def _parse_args():
     parser.add_argument("database", help="The digikam database file")
     parser.add_argument("--image-root", help="Path to the root of the image files.",
                         default='.')
-    parser.add_argument("--cache-locations", help="retrieve place tags and cache locations",
+    parser.add_argument("--cache-location-tags", help="retrieve place tags from DB and cache them",
                         action="store_true")
     parser.add_argument("--location-cache", help="JSON file with the location information",
                         default="locations.json")
@@ -75,12 +75,15 @@ if __name__ == "__main__":
     readonly_uri = 'file:' + args.database + '?mode=ro'
     print(f'-- database read-only URI: {readonly_uri}')
     connection = sqlite3.connect(readonly_uri, uri=True)
-    # get the geolocation information
+
     location_information = {}
-    if args.cache_locations:
-        locations = get_location_tags(connection)
+    if args.cache_location_tags:
+        location_information = get_location_tags(connection)
         with open(args.location_cache, 'w', encoding='utf-8') as f:
-            json.dump(locations, f, ensure_ascii=False, indent=4)
+            json.dump(location_information, f, ensure_ascii=False, indent=4)
+    else:
+        with open(args.location_cache, 'r') as f:
+            location_information = json.load(f)
 
     connection.close()
     if args.dry_run:
