@@ -12,7 +12,7 @@ def _parse_args():
     parser.add_argument("--cache-location-tags", help="retrieve place tags from DB and cache them",
                         action="store_true")
     parser.add_argument("--location-cache", help="JSON file with the location information",
-                        default="locations.json")
+                        default="locations.json")`
     parser.add_argument("--dry-run", help="Dry run - just print out changes that would be made",
                         action="store_true")
     return parser.parse_args()
@@ -126,12 +126,10 @@ if __name__ == "__main__":
                 location['latitude'] = cached_location['latitude']
                 location['longitude'] = cached_location['longitude']
 
-    if location_updated:
+    if location_updated and args.cache_location_tags:
         # update the cache file
         with open(args.location_cache, 'w', encoding='utf-8') as f:
             json.dump(location_information, f, ensure_ascii=False, indent=4)
-
-
 
     connection.close()
     if args.dry_run:
