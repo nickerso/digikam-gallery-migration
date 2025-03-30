@@ -12,7 +12,7 @@ def _parse_args():
     parser.add_argument("--cache-location-tags", help="retrieve place tags from DB and cache them",
                         action="store_true")
     parser.add_argument("--location-cache", help="JSON file with the location information",
-                        default="locations.json")`
+                        default="locations.json")
     parser.add_argument("--dry-run", help="Dry run - just print out changes that would be made",
                         action="store_true")
     return parser.parse_args()
