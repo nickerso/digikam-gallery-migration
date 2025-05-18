@@ -2,6 +2,8 @@ import argparse
 import sqlite3
 import json
 from pathlib import Path
+from PIL import Image
+import piexif
 
 
 def _parse_args():
@@ -51,6 +53,51 @@ def print_tag(tag, recursive, conn):
     return
 
 
+def check_if_gps_exists(image_path):
+    # check if a file already has location headers.
+    try:
+        img = Image.open(image_path)
+        exif_dict = piexif.load(img.info.get("exif", b""))
+        gps_data = exif_dict.get("GPS", {})
+        return bool(gps_data)
+    except Exception as e:
+        print(f"Error reading EXIF data: {e}")
+        return False
+
+
+def deg_to_dms_rational(deg_float):
+    deg_abs = abs(deg_float)
+    minutes, seconds = divmod(deg_abs * 3600, 60)
+    degrees, minutes = divmod(minutes, 60)
+    return [
+        (int(degrees), 1),
+        (int(minutes), 1),
+        (int(seconds * 100), 100)
+    ]
+
+
+def set_gps_location(file_path, lat, lng):
+    # Open image and load EXIF data
+    img = Image.open(file_path)
+    exif_dict = piexif.load(img.info.get('exif', b''))
+
+    # Prepare GPS IFD
+    gps_ifd = {
+        piexif.GPSIFD.GPSLatitudeRef: 'N' if lat >= 0 else 'S',
+        piexif.GPSIFD.GPSLatitude: deg_to_dms_rational(lat),
+        piexif.GPSIFD.GPSLongitudeRef: 'E' if lng >= 0 else 'W',
+        piexif.GPSIFD.GPSLongitude: deg_to_dms_rational(lng),
+        piexif.GPSIFD.GPSVersionID: (2, 0, 0, 0),
+    }
+
+    # Update EXIF data
+    exif_dict['GPS'] = gps_ifd
+    exif_bytes = piexif.dump(exif_dict)
+
+    # Save image with new EXIF data
+    img.save(file_path, "jpeg", exif=exif_bytes)
+
+
 def print_image_location(image_root, location_tags, image_list, conn, apply_location):
     # Create a cursor object to interact with the database
     cursor = conn.cursor()
@@ -93,7 +140,12 @@ def print_image_location(image_root, location_tags, image_list, conn, apply_loca
                 relative_path = Path(cursor.fetchone()[0][1:])
                 cursor.execute(f'SELECT name FROM Images Where id = "{image}"')
                 filename = cursor.fetchone()[0]
-                print(f'Image file is: {image_root / relative_path / filename}')
+                image_path = image_root / relative_path / filename
+                if check_if_gps_exists(image_path):
+                    print(f'Image already has GPS information: {image_path}')
+                else:
+                    print(f'Image safe to update: {image_path}')
+                    set_gps_location(image_path, location['latitude'], location['longitude'])
 
     # print('Image tags that have no associated location:')
     # print(json.dumps(no_location_tags))
