@@ -1,6 +1,7 @@
 import argparse
 import sqlite3
 import json
+from pathlib import Path
 
 
 def _parse_args():
@@ -11,6 +12,11 @@ def _parse_args():
                         default='digikam4.db')
     parser.add_argument("--location-cache", help="JSON file with the location information",
                         default="locations.json")
+    parser.add_argument("--apply-location", help="apply the found location to the image file",
+                        action="store_true")
+    parser.add_argument("--image-root", help="The root folder with the image files",
+                        default="images")
+
     return parser.parse_args()
 
 
@@ -45,7 +51,7 @@ def print_tag(tag, recursive, conn):
     return
 
 
-def print_image_location(location_tags, image_list, conn):
+def print_image_location(image_root, location_tags, image_list, conn, apply_location):
     # Create a cursor object to interact with the database
     cursor = conn.cursor()
 
@@ -53,6 +59,7 @@ def print_image_location(location_tags, image_list, conn):
     cursor.execute('SELECT id FROM Images')
     rows = cursor.fetchall()
 
+    no_location_tags = []
     for row in rows:
         image = row[0]
         if len(image_list) and str(image) not in image_list:
@@ -70,10 +77,26 @@ def print_image_location(location_tags, image_list, conn):
             else:
                 nt.append(tag)
         if location is None:
-            print(f'Image: {image} has no location found; has tags: {nt}')
+            if len(nt):
+                no_location_tags = list(set(no_location_tags) | set(nt))
+                #print(f'Image: {image} has no location found; has tags: {nt}')
         else:
             print(f'Image: {image} has a location: {location['name']}')
+            if apply_location:
+                print('Applying the location to the image file.')
+                print(json.dumps(location))
+                cursor.execute(f'SELECT album FROM Images Where id = "{image}"')
+                album_id = cursor.fetchone()[0]
+                cursor.execute(f'SELECT relativePath FROM Albums Where id = "{album_id}"')
+                # need to drop the leading / on the relativePath used in the database so that pathlib will
+                # let us treat it as a relative path.
+                relative_path = Path(cursor.fetchone()[0][1:])
+                cursor.execute(f'SELECT name FROM Images Where id = "{image}"')
+                filename = cursor.fetchone()[0]
+                print(f'Image file is: {image_root / relative_path / filename}')
 
+    # print('Image tags that have no associated location:')
+    # print(json.dumps(no_location_tags))
 
 def build_location_tag_listing(location_information):
     tags = {}
@@ -104,6 +127,6 @@ if __name__ == "__main__":
     if args.images:
         image_list = args.images.split(',')
         print(json.dumps(image_list))
-    print_image_location(location_tags, image_list, connection)
+    print_image_location(Path(args.image_root), location_tags, image_list, connection, args.apply_location)
 
     connection.close()
