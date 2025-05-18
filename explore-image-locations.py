@@ -4,6 +4,19 @@ import json
 from pathlib import Path
 from PIL import Image
 import piexif
+import sys
+from datetime import datetime
+
+
+LOG_OUTPUT = sys.stdout
+
+
+def log(message):
+    # Get current date and time
+    now = datetime.now()
+    # Format date and time as string
+    datetime_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    print(f'[{datetime_str}] {message}', file=LOG_OUTPUT)
 
 
 def _parse_args():
@@ -18,6 +31,8 @@ def _parse_args():
                         action="store_true")
     parser.add_argument("--image-root", help="The root folder with the image files",
                         default="images")
+    parser.add_argument("--log-file", help="File to send log of actions to, default to stdout",
+                        default=None)
 
     return parser.parse_args()
 
@@ -89,6 +104,7 @@ def set_gps_location(file_path, lat, lng):
         piexif.GPSIFD.GPSLongitude: deg_to_dms_rational(lng),
         piexif.GPSIFD.GPSVersionID: (2, 0, 0, 0),
     }
+    log(f'Setting GPS location for file: {file_path}; to: {gps_ifd}')
 
     # Update EXIF data
     exif_dict['GPS'] = gps_ifd
@@ -124,31 +140,35 @@ def print_image_location(image_root, location_tags, image_list, conn, apply_loca
             else:
                 nt.append(tag)
         if location is None:
+            log(f'Image: {image} has no location.')
             if len(nt):
                 no_location_tags = list(set(no_location_tags) | set(nt))
                 #print(f'Image: {image} has no location found; has tags: {nt}')
         else:
-            print(f'Image: {image} has a location: {location['name']}')
+            log(f'Image: {image} has a location:')
+            log(json.dumps(location))
+            cursor.execute(f'SELECT album FROM Images Where id = "{image}"')
+            album_id = cursor.fetchone()[0]
+            cursor.execute(f'SELECT relativePath FROM Albums Where id = "{album_id}"')
+            # need to drop the leading / on the relativePath used in the database so that pathlib will
+            # let us treat it as a relative path.
+            relative_path = Path(cursor.fetchone()[0][1:])
+            cursor.execute(f'SELECT name FROM Images Where id = "{image}"')
+            filename = cursor.fetchone()[0]
+            image_path = image_root / relative_path / filename
             if apply_location:
-                print('Applying the location to the image file.')
-                print(json.dumps(location))
-                cursor.execute(f'SELECT album FROM Images Where id = "{image}"')
-                album_id = cursor.fetchone()[0]
-                cursor.execute(f'SELECT relativePath FROM Albums Where id = "{album_id}"')
-                # need to drop the leading / on the relativePath used in the database so that pathlib will
-                # let us treat it as a relative path.
-                relative_path = Path(cursor.fetchone()[0][1:])
-                cursor.execute(f'SELECT name FROM Images Where id = "{image}"')
-                filename = cursor.fetchone()[0]
-                image_path = image_root / relative_path / filename
-                if check_if_gps_exists(image_path):
-                    print(f'Image already has GPS information: {image_path}')
+                if image_path.suffix == ".avi":
+                    log(f'Not able to get/set GPS for AVI files: {image_path}')
+                elif check_if_gps_exists(image_path):
+                    log(f'Image already has GPS information, not applying location: {image_path}')
                 else:
-                    print(f'Image safe to update: {image_path}')
+                    log(f'Image safe to update, applying location GPS: {image_path}')
                     set_gps_location(image_path, location['latitude'], location['longitude'])
 
-    # print('Image tags that have no associated location:')
-    # print(json.dumps(no_location_tags))
+    if len(no_location_tags):
+        log(f'Image tags that have no associated location:')
+        log(json.dumps(no_location_tags))
+
 
 def build_location_tag_listing(location_information):
     tags = {}
@@ -161,9 +181,17 @@ def build_location_tag_listing(location_information):
 if __name__ == "__main__":
     args = _parse_args()
 
-    print(f'Exploring photo locations from database file: {args.database}')
+    # basic logging
+    if args.log_file:
+        log_path = Path(args.log_file)
+        if log_path.is_file():
+            print(f'Log file ({log_path}) already exists, aborting.')
+            exit(-1)
+        LOG_OUTPUT = log_path.open("w")
+
+    log(f'Exploring photo locations from database file: {args.database}')
     readonly_uri = 'file:' + args.database + '?mode=ro'
-    print(f'-- database read-only URI: {readonly_uri}')
+    log(f'-- database read-only URI: {readonly_uri}')
     connection = sqlite3.connect(readonly_uri, uri=True)
 
     with open(args.location_cache, 'r') as f:
@@ -178,7 +206,7 @@ if __name__ == "__main__":
     image_list = []
     if args.images:
         image_list = args.images.split(',')
-        print(json.dumps(image_list))
+        log(f'Image list provided: {json.dumps(image_list)}')
     print_image_location(Path(args.image_root), location_tags, image_list, connection, args.apply_location)
 
     connection.close()
