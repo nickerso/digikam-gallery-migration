@@ -159,6 +159,14 @@ def print_image_location(image_root, location_tags, image_list, conn, apply_loca
             if apply_location:
                 if image_path.suffix == ".avi":
                     log(f'Not able to get/set GPS for AVI files: {image_path}')
+                elif image_path.suffix == ".mov":
+                    log(f'Not able to get/set GPS for MOV files: {image_path}')
+                elif image_path.suffix == ".AVI":
+                    log(f'Not able to get/set GPS for AVI files: {image_path}')
+                elif image_path.suffix == ".ORF":
+                    log(f'Not able to get/set GPS for ORF files: {image_path}')
+                elif image_path.suffix == ".mp4":
+                    log(f'Not able to get/set GPS for MP4 files: {image_path}')
                 elif check_if_gps_exists(image_path):
                     log(f'Image already has GPS information, not applying location: {image_path}')
                 else:
